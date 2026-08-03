@@ -5,7 +5,6 @@ import { app } from "../app.js";
 
 const connectDB = async () => {
 
-
   try {
     await mongoose.connect(`${process.env.MONGODB_URI}/${DB_NAME}`);
     console.log("MongoDB connected");
