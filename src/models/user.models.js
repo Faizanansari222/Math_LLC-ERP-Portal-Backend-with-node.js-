@@ -95,7 +95,7 @@ userSchema.methods.generateRefreshToken = function () {
 };
 
 // Compare entered password with stored hash
-userSchema.methods.comparePassword = async function (candidatePassword) {
+userSchema.methods.isCorrectPassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
