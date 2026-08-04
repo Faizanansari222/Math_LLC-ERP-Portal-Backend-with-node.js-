@@ -9,7 +9,7 @@ const taskSchema = new mongoose.Schema(
       trim: true,
     },
     client: {
-      type: String, // e.g. "TechCorp Inc." — or make this a ref if you have a Client model
+      type: String,
     },
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,

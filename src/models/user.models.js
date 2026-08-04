@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
 
 const userSchema = mongoose.Schema(
   {
@@ -24,20 +25,38 @@ const userSchema = mongoose.Schema(
       type: String,
       required: true,
       minlength: 8,
-      select: false,
     },
     userImage: {
       type: String,
     },
+    designation: {
+      type: String,
+      enum: [
+        "Graphic Designer",
+        "Social Media Manager",
+        "Bookkeeper",
+        "Tax Preparer",
+        "PayRoll",
+        "intern",
+        "Tax Reviewer",
+        "Video Editor",
+        "Task Assignee",
+        ``,
+      ],
+      default: "Task Assignee",
+    },
     role: {
       type: String,
-      enum: ["superadmin", "admin", "user"],
+      enum: ["super-admin", "admin", "user"],
       default: "user",
+    },
+    refreshToken: {
+      type: String,
     },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Hash password before saving
@@ -46,6 +65,34 @@ userSchema.pre("save", async function (next) {
   this.password = await bcrypt.hash(this.password, 10);
   next();
 });
+
+userSchema.methods.generateAccessToken = function () {
+  return jwt.sign(
+    {
+      _id: this._id,
+      email: this.email,
+      firstName: this.firstName,
+      lastName: this.lastName,
+      designation: this.designation,
+    },
+    process.env.ACCESS_TOKEN_SECRET,
+    {
+      expiresIn: process.env.ACCESS_TOKEN_EXPIRY,
+    },
+  );
+};
+
+userSchema.methods.generateRefreshToken = function () {
+  return jwt.sign(
+    {
+      _id: this._id,
+    },
+    process.env.REFRESH_TOKEN_SECRET,
+    {
+      expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
+    },
+  );
+};
 
 // Compare entered password with stored hash
 userSchema.methods.comparePassword = async function (candidatePassword) {
