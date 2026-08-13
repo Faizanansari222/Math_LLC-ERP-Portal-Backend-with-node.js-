@@ -29,21 +29,35 @@ const userSchema = mongoose.Schema(
     userImage: {
       type: String,
     },
-    designation: {
+    phone: {
       type: String,
+      required: true,
+    },
+    department: {
+      type: String,
+      required: true,
       enum: [
-        "Graphic Designer",
-        "Social Media Manager",
-        "Bookkeeper",
-        "Tax Preparer",
-        "PayRoll",
-        "intern",
-        "Tax Reviewer",
-        "Video Editor",
-        "Task Assignee",
-        ``,
+        "tax",
+        "payroll",
+        "bookkeeping",
+        "formation",
+        "management",
+        "social-media",
+        "design",
+        "development",
       ],
-      default: "Task Assignee",
+    },
+
+    experience: {
+      type: String,
+      required: true,
+      enum: ["entry-level", "mid-level", "senior-level", "lead-level"],
+    },
+
+    status: {
+      type: String,
+      enum: ["active", "inactive", "on-leave"],
+      default: "active",
     },
     role: {
       type: String,
@@ -73,7 +87,8 @@ userSchema.methods.generateAccessToken = function () {
       email: this.email,
       firstName: this.firstName,
       lastName: this.lastName,
-      designation: this.designation,
+      experience: this.experience,
+      department: this.department,
     },
     process.env.ACCESS_TOKEN_SECRET,
     {

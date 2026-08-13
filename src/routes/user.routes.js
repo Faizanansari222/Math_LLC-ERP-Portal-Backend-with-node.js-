@@ -8,9 +8,10 @@ import {
   getCurrentUser,
   updateAccountHandler,
   profileImageUpdate,
+  getAllUsers,
 } from "../controllers/user.controllers.js";
 import { upload } from "../middleware/multer.middleware.js";
-import { verifyJWT } from "../middleware/auth.middleware.js";
+import { verifyJWT, authorize } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
@@ -27,6 +28,7 @@ router.route("/refresh-token").post(refreshAccessToken);
 
 // --- Protected routes (require a valid access token) ---
 router.route("/logout").post(verifyJWT, logoutUser);
+router.route("/").get(verifyJWT, authorize("admin", "super-admin"), getAllUsers);
 router.route("/change-password").post(verifyJWT, changeCurrentPassword);
 router.route("/current-user").get(verifyJWT, getCurrentUser);
 router.route("/update-account").patch(verifyJWT, updateAccountHandler);
