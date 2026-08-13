@@ -1,43 +1,38 @@
 import { Router } from "express";
+
 import {
-  loginUser,
-  logoutUser,
-  refreshAccessToken,
-  registerUser,
-  changeCurrentPassword,
-  getCurrentUser,
-  updateAccountHandler,
-  profileImageUpdate,
-  getAllUsers,
-} from "../controllers/user.controllers.js";
-import { upload } from "../middleware/multer.middleware.js";
-import { verifyJWT, authorize } from "../middleware/auth.middleware.js";
+  createClient,
+  getAllClients,
+  getClientById,
+  updateClient,
+  deleteClient,
+  assignClient,
+  unassignClient,
+  updateClientStatus,
+  updateTaxFilingStatus,
+  getClientStatistics,
+} from "../controllers/client.controllers.js";
+
+import { verifyJWT } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-// --- Public routes (no token required) ---
+router.route("/").post(verifyJWT, createClient).get(verifyJWT, getAllClients);
+
+router.route("/statistics").get(verifyJWT, getClientStatistics);
+
 router
-  .route("/register")
-  .post(upload.fields([{ name: "userImage", maxCount: 1 }]), registerUser);
+  .route("/:clientId")
+  .get(verifyJWT, getClientById)
+  .patch(verifyJWT, updateClient)
+  .delete(verifyJWT, deleteClient);
 
-router.route("/login").post(loginUser);
+router.route("/:clientId/assign").patch(verifyJWT, assignClient);
 
-// IMPORTANT: no verifyJWT here — the access token is expected to already be
-// expired when this is called. Only the refresh token cookie is checked.
-router.route("/refresh-token").post(refreshAccessToken);
+router.route("/:clientId/unassign").patch(verifyJWT, unassignClient);
 
-// --- Protected routes (require a valid access token) ---
-router.route("/logout").post(verifyJWT, logoutUser);
-router.route("/").get(verifyJWT, authorize("admin", "super-admin"), getAllUsers);
-router.route("/change-password").post(verifyJWT, changeCurrentPassword);
-router.route("/current-user").get(verifyJWT, getCurrentUser);
-router.route("/update-account").patch(verifyJWT, updateAccountHandler);
-router
-  .route("/update-avatar")
-  .patch(
-    verifyJWT,
-    upload.fields([{ name: "userImage", maxCount: 1 }]),
-    profileImageUpdate,
-  );
+router.route("/:clientId/status").patch(verifyJWT, updateClientStatus);
+
+router.route("/:clientId/tax-status").patch(verifyJWT, updateTaxFilingStatus);
 
 export default router;

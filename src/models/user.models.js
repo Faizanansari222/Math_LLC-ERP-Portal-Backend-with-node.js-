@@ -51,7 +51,7 @@ const userSchema = mongoose.Schema(
     experience: {
       type: String,
       required: true,
-      enum: ["entry-level", "mid-level", "senior-level", "lead-level"],
+      enum: ["entry-level", "mid-level", "senior-level", "  "],
     },
 
     status: {
