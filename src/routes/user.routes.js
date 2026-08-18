@@ -1,38 +1,37 @@
 import { Router } from "express";
-
 import {
-  createClient,
-  getAllClients,
-  getClientById,
-  updateClient,
-  deleteClient,
-  assignClient,
-  unassignClient,
-  updateClientStatus,
-  updateTaxFilingStatus,
-  getClientStatistics,
-} from "../controllers/client.controllers.js";
-
+  registerUser,
+  loginUser,
+  logoutUser,
+  refreshAccessToken,
+  changeCurrentPassword,
+  getCurrentUser,
+  getAllUsers,
+  updateAccountHandler,
+  profileImageUpdate,
+} from "../controllers/user.controllers.js";
 import { verifyJWT } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-router.route("/").post(verifyJWT, createClient).get(verifyJWT, getAllClients);
 
-router.route("/statistics").get(verifyJWT, getClientStatistics);
+router.route("/register").post(registerUser);
 
-router
-  .route("/:clientId")
-  .get(verifyJWT, getClientById)
-  .patch(verifyJWT, updateClient)
-  .delete(verifyJWT, deleteClient);
+router.route("/login").post(loginUser);
 
-router.route("/:clientId/assign").patch(verifyJWT, assignClient);
+router.route("/refresh-token").post(refreshAccessToken);
 
-router.route("/:clientId/unassign").patch(verifyJWT, unassignClient);
 
-router.route("/:clientId/status").patch(verifyJWT, updateClientStatus);
+router.route("/logout").post(verifyJWT, logoutUser);
 
-router.route("/:clientId/tax-status").patch(verifyJWT, updateTaxFilingStatus);
+router.route("/getAllUsers").get(verifyJWT, getAllUsers);
+
+router.route("/current-user").get(verifyJWT, getCurrentUser);
+
+router.route("/change-password").post(verifyJWT, changeCurrentPassword);
+
+router.route("/update-account").patch(verifyJWT, updateAccountHandler);
+
+router.route("/profile-image").patch(verifyJWT, profileImageUpdate);
 
 export default router;
