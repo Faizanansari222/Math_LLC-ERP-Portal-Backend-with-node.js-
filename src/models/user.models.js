@@ -2,6 +2,35 @@ import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 
+const timesheetSchema = new mongoose.Schema(
+  {
+    clockInTime: {
+      type: Date,
+      required: true,
+    },
+    clockOutTime: {
+      type: Date,
+    },
+    status: {
+      type: String,
+      enum: ["active", "completed"],
+      default: "active",
+    },
+    totalHours: {
+      type: Number,
+      default: 0,
+    },
+    notes: {
+      type: String,
+      trim: true,
+      maxlength: [500, "Notes cannot exceed 500 characters"],
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
 const userSchema = mongoose.Schema(
   {
     firstName: {
@@ -51,7 +80,7 @@ const userSchema = mongoose.Schema(
     experience: {
       type: String,
       required: true,
-      enum: ["entry-level", "mid-level", "senior-level", "  "],
+      enum: ["entry-level", "mid-level", "senior-level", "lead-level"],
     },
 
     status: {
@@ -64,13 +93,14 @@ const userSchema = mongoose.Schema(
       enum: ["super-admin", "admin", "user"],
       default: "user",
     },
+    timesheets: [timesheetSchema],
     refreshToken: {
       type: String,
     },
   },
   {
     timestamps: true,
-  },
+  }
 );
 
 // Hash password before saving

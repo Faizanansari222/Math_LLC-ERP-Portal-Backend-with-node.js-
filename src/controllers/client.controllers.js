@@ -3,6 +3,7 @@ import { User } from "../models/user.models.js";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { sendClientEmail, sendWelcomeEmail, sendTaxStatusEmail } from "../services/mail.service.js";
 
 // ============================================================
 // CREATE CLIENT
@@ -694,6 +695,122 @@ const getClientStatistics = asyncHandler(async (req, res) => {
   );
 });
 
+// ============================================================
+// SEND EMAIL TO CLIENT
+// POST /api/v1/clients/:clientId/send-email
+// ============================================================
+const sendEmailToClient = asyncHandler(async (req, res) => {
+  const { clientId } = req.params;
+  const { subject, message } = req.body;
+
+  if (!subject?.trim()) {
+    throw new ApiError(400, "Email subject is required");
+  }
+
+  if (!message?.trim()) {
+    throw new ApiError(400, "Email message is required");
+  }
+
+  const client = await Client.findById(clientId);
+
+  if (!client) {
+    throw new ApiError(404, "Client not found");
+  }
+
+  const result = await sendClientEmail({
+    to: client.email,
+    subject: subject.trim(),
+    message: message.trim(),
+    clientName: client.firstName,
+  });
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        {
+          messageId: result.messageId,
+          to: client.email,
+          accepted: result.accepted,
+        },
+        "Email sent successfully",
+      ),
+    );
+});
+
+// ============================================================
+// SEND WELCOME EMAIL TO CLIENT
+// POST /api/v1/clients/:clientId/send-welcome
+// ============================================================
+const sendWelcomeEmailToClient = asyncHandler(async (req, res) => {
+  const { clientId } = req.params;
+
+  const client = await Client.findById(clientId);
+
+  if (!client) {
+    throw new ApiError(404, "Client not found");
+  }
+
+  const result = await sendWelcomeEmail({
+    to: client.email,
+    clientName: client.firstName,
+    services: client.services,
+  });
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        {
+          messageId: result.messageId,
+          to: client.email,
+        },
+        "Welcome email sent successfully",
+      ),
+    );
+});
+
+// ============================================================
+// SEND TAX STATUS UPDATE EMAIL
+// POST /api/v1/clients/:clientId/send-tax-update
+// ============================================================
+const sendTaxUpdateEmail = asyncHandler(async (req, res) => {
+  const { clientId } = req.params;
+  const { taxFilingStatus } = req.body;
+
+  if (!taxFilingStatus) {
+    throw new ApiError(400, "Tax filing status is required");
+  }
+
+  const client = await Client.findById(clientId);
+
+  if (!client) {
+    throw new ApiError(404, "Client not found");
+  }
+
+  const result = await sendTaxStatusEmail({
+    to: client.email,
+    clientName: client.firstName,
+    taxFilingStatus,
+    businessName: client.businessName,
+  });
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        {
+          messageId: result.messageId,
+          to: client.email,
+        },
+        "Tax status email sent successfully",
+      ),
+    );
+});
+
 export {
   createClient,
   getAllClients,
@@ -705,4 +822,7 @@ export {
   updateClientStatus,
   updateTaxFilingStatus,
   getClientStatistics,
+  sendEmailToClient,
+  sendWelcomeEmailToClient,
+  sendTaxUpdateEmail,
 };

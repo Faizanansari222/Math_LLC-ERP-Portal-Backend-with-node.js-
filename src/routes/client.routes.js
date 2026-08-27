@@ -11,6 +11,9 @@ import {
   updateClientStatus,
   updateTaxFilingStatus,
   getClientStatistics,
+  sendEmailToClient,
+  sendWelcomeEmailToClient,
+  sendTaxUpdateEmail,
 } from "../controllers/client.controllers.js";
 
 import { verifyJWT } from "../middleware/auth.middleware.js";
@@ -37,5 +40,10 @@ router.patch("/:clientId/unassign", unassignClient);
 // Status
 router.patch("/:clientId/status", updateClientStatus);
 router.patch("/:clientId/tax-status", updateTaxFilingStatus);
+
+// Email
+router.post("/:clientId/send-email", sendEmailToClient);
+router.post("/:clientId/send-welcome", sendWelcomeEmailToClient);
+router.post("/:clientId/send-tax-update", sendTaxUpdateEmail);
 
 export default router;

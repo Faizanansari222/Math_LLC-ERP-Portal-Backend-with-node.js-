@@ -2,6 +2,8 @@
   import express from "express";
   import cors from "cors";
   import cookieParser from "cookie-parser";
+  
+  import performanceRouter from "./routes/performance.routes.js";
   const app = express();
   app.use(express.json());
   app.use(
@@ -23,6 +25,7 @@
   app.use("/api/v1/users", userRouter);
   app.use("/api/v1/clients", clientRouter);
   app.use("/api/v1/projects", projectRouter);
+  app.use("/api/v1/performance", performanceRouter);
   app.use("/api/v1/messages", messageRouter);
   app.use("/api/v1/notifications", notificationRouter);
 

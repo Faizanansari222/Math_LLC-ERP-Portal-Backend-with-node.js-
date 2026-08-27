@@ -333,9 +333,217 @@ const getDepartmentPerformance = asyncHandler(async (req, res) => {
   );
 });
 
+// ============================================================
+// CLOCK IN
+// POST /api/v1/performance/timesheets/clock-in
+// ============================================================
+const clockIn = asyncHandler(async (req, res) => {
+  const { notes } = req.body;
+  const userId = req.user._id;
+
+  // Check if user already has an active timesheet
+  const user = await User.findById(userId);
+  const activeTimesheet = user.timesheets.find((ts) => ts.status === "active");
+
+  if (activeTimesheet) {
+    throw new ApiError(400, "You already have an active timesheet. Please clock out first.");
+  }
+
+  // Create new timesheet entry
+  const newTimesheet = {
+    clockInTime: new Date(),
+    status: "active",
+    notes: notes || "",
+  };
+
+  user.timesheets.push(newTimesheet);
+  await user.save();
+
+  const timesheet = user.timesheets[user.timesheets.length - 1];
+
+  return res.status(201).json(
+    new ApiResponse(
+      201,
+      {
+        _id: timesheet._id,
+        clockInTime: timesheet.clockInTime,
+        status: timesheet.status,
+        notes: timesheet.notes,
+      },
+      "Clocked in successfully"
+    )
+  );
+});
+
+// ============================================================
+// CLOCK OUT
+// PATCH /api/v1/performance/timesheets/:timesheetId/clock-out
+// ============================================================
+const clockOut = asyncHandler(async (req, res) => {
+  const { timesheetId } = req.params;
+  const userId = req.user._id;
+
+  const user = await User.findById(userId);
+  const timesheet = user.timesheets.id(timesheetId);
+
+  if (!timesheet) {
+    throw new ApiError(404, "Timesheet not found");
+  }
+
+  if (timesheet.status === "completed") {
+    throw new ApiError(400, "This timesheet is already completed");
+  }
+
+  // Calculate total hours
+  const clockOutTime = new Date();
+  const clockInTime = new Date(timesheet.clockInTime);
+  const totalHours = Math.round(((clockOutTime - clockInTime) / (1000 * 60 * 60)) * 100) / 100;
+
+  timesheet.clockOutTime = clockOutTime;
+  timesheet.status = "completed";
+  timesheet.totalHours = totalHours;
+
+  await user.save();
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        _id: timesheet._id,
+        clockInTime: timesheet.clockInTime,
+        clockOutTime: timesheet.clockOutTime,
+        status: timesheet.status,
+        totalHours: timesheet.totalHours,
+        notes: timesheet.notes,
+      },
+      "Clocked out successfully"
+    )
+  );
+});
+
+// ============================================================
+// GET MY TIMESHEETS
+// GET /api/v1/performance/my-timesheets
+// ============================================================
+const getMyTimesheets = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+
+  const user = await User.findById(userId).select("timesheets");
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  // Sort timesheets by clockInTime descending
+  const timesheets = user.timesheets.sort((a, b) => 
+    new Date(b.clockInTime) - new Date(a.clockInTime)
+  );
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      timesheets,
+      "Timesheets fetched successfully"
+    )
+  );
+});
+
+// ============================================================
+// GET ALL TIMESHEETS (Admin only)
+// GET /api/v1/performance/timesheets
+// ============================================================
+const getAllTimesheets = asyncHandler(async (req, res) => {
+  if (req.user.role === "user") {
+    throw new ApiError(403, "Only admins can view all timesheets");
+  }
+
+  const users = await User.find({}).select("firstName lastName email department timesheets");
+
+  // Flatten and combine timesheets with user info
+  const allTimesheets = [];
+  users.forEach((user) => {
+    user.timesheets.forEach((ts) => {
+      allTimesheets.push({
+        _id: ts._id,
+        user: {
+          _id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          department: user.department,
+        },
+        clockInTime: ts.clockInTime,
+        clockOutTime: ts.clockOutTime,
+        status: ts.status,
+        totalHours: ts.totalHours,
+        notes: ts.notes,
+        createdAt: ts.createdAt,
+        updatedAt: ts.updatedAt,
+      });
+    });
+  });
+
+  // Sort by clockInTime descending
+  allTimesheets.sort((a, b) => new Date(b.clockInTime) - new Date(a.clockInTime));
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      allTimesheets,
+      "All timesheets fetched successfully"
+    )
+  );
+});
+
+// ============================================================
+// GET TIMESHEETS BY EMPLOYEE
+// GET /api/v1/performance/timesheets/employee/:employeeId
+// ============================================================
+const getTimesheetsByEmployee = asyncHandler(async (req, res) => {
+  const { employeeId } = req.params;
+
+  // Regular users can only view their own timesheets
+  if (req.user.role === "user" && req.user._id.toString() !== employeeId) {
+    throw new ApiError(403, "You can only view your own timesheets");
+  }
+
+  const user = await User.findById(employeeId).select("firstName lastName email department timesheets");
+
+  if (!user) {
+    throw new ApiError(404, "Employee not found");
+  }
+
+  // Sort timesheets by clockInTime descending
+  const timesheets = user.timesheets.sort((a, b) => 
+    new Date(b.clockInTime) - new Date(a.clockInTime)
+  );
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        employee: {
+          _id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          department: user.department,
+        },
+        timesheets,
+      },
+      "Employee timesheets fetched successfully"
+    )
+  );
+});
+
 export {
   calculatePerformance,
   getEmployeePerformance,
   getAllPerformanceSummary,
   getDepartmentPerformance,
+  clockIn,
+  clockOut,
+  getMyTimesheets,
+  getAllTimesheets,
+  getTimesheetsByEmployee,
 };
