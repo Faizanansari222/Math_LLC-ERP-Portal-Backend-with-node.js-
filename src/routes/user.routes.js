@@ -7,10 +7,10 @@ import {
   changeCurrentPassword,
   getCurrentUser,
   getAllUsers,
-  updateAccountHandler,
+  adminUpdateUser,
   profileImageUpdate,
 } from "../controllers/user.controllers.js";
-import { verifyJWT } from "../middleware/auth.middleware.js";
+import { verifyJWT, authorize } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
@@ -30,7 +30,7 @@ router.route("/current-user").get(verifyJWT, getCurrentUser);
 
 router.route("/change-password").post(verifyJWT, changeCurrentPassword);
 
-router.route("/update-account").patch(verifyJWT, updateAccountHandler);
+router.route("/admin/update-user/:userId").patch(verifyJWT, authorize("super-admin", "admin"), adminUpdateUser);
 
 router.route("/profile-image").patch(verifyJWT, profileImageUpdate);
 

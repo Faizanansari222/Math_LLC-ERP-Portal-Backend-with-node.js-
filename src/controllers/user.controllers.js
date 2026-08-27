@@ -263,23 +263,65 @@ const getCurrentUser = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, user, "User found"));
 });
 
-const updateAccountHandler = asyncHandler(async (req, res) => {
-  const { firstName, lastName, email } = req.body;
+const adminUpdateUser = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
 
-  if ([firstName, lastName, email].some((field) => field?.trim() === "")) {
-    throw new ApiError(400, "All fields are required");
+  if (!userId) {
+    throw new ApiError(400, "User ID is required");
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  // Fields an admin is allowed to update
+  const allowedFields = [
+    "firstName",
+    "lastName",
+    "email",
+    "phone",
+    "department",
+    "experience",
+    "status",
+    "role",
+    "userImage",
+  ];
+
+  const updates = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      updates[field] = req.body[field];
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new ApiError(400, "No valid fields to update");
+  }
+
+  // Check email uniqueness if email is being changed
+  if (updates.email) {
+    const email = updates.email.toLowerCase().trim();
+    const existingUser = await User.findOne({
+      email,
+      _id: { $ne: userId },
+    });
+    if (existingUser) {
+      throw new ApiError(409, "Another user is already using this email");
+    }
+    updates.email = email;
   }
 
   const updatedUser = await User.findByIdAndUpdate(
-    req.user._id,
-    { $set: { firstName, lastName, email } },
+    userId,
+    { $set: updates },
     { new: true, runValidators: true },
   ).select("-password -refreshToken");
 
   return res
     .status(200)
     .json(
-      new ApiResponse(200, updatedUser, "Account details updated successfully"),
+      new ApiResponse(200, updatedUser, "User updated successfully"),
     );
 });
 
@@ -323,6 +365,6 @@ export {
   changeCurrentPassword,
   getCurrentUser,
   getAllUsers,
-  updateAccountHandler,
+  adminUpdateUser,
   profileImageUpdate,
 };
