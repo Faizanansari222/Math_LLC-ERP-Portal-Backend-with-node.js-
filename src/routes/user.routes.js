@@ -15,7 +15,9 @@ import { verifyJWT, authorize } from "../middleware/auth.middleware.js";
 const router = Router();
 
 
-router.route("/register").post(registerUser);
+router
+  .route("/register")
+  .post(verifyJWT, authorize("super-admin", "admin"), registerUser);
 
 router.route("/login").post(loginUser);
 

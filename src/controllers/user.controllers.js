@@ -52,6 +52,13 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "All fields are required");
   }
 
+  if (!["user", "client"].includes(role)) {
+    throw new ApiError(
+      400,
+      "This endpoint can only create employee (user) or client accounts",
+    );
+  }
+
   const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
   if (existingUser) {
     throw new ApiError(409, "User already exists");
