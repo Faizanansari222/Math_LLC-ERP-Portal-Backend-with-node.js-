@@ -57,7 +57,7 @@ const clientSchema = new mongoose.Schema(
       lowercase: true,
       unique: true,
       match: [
-        /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
         "Please provide a valid email address",
       ],
       index: true,
@@ -67,16 +67,16 @@ const clientSchema = new mongoose.Schema(
       required: [true, "Phone number is required"],
       trim: true,
       match: [
-        /^\(\d{3}\)\s\d{3}-\d{4}$/,
-        "Please provide a valid phone number in format (XXX) XXX-XXXX",
+        /^[\d\s()+-]{7,20}$/,
+        "Please provide a valid phone number",
       ],
     },
     alternativePhone: {
       type: String,
       trim: true,
       match: [
-        /^\(\d{3}\)\s\d{3}-\d{4}$/,
-        "Please provide a valid phone number in format (XXX) XXX-XXXX",
+        /^[\d\s()+-]{7,20}$/,
+        "Please provide a valid phone number",
       ],
     },
 

@@ -16,12 +16,12 @@ import {
   sendTaxUpdateEmail,
 } from "../controllers/client.controllers.js";
 
-import { verifyJWT } from "../middleware/auth.middleware.js";
+import { verifyJWT, authorize } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-// All client routes require authentication
-router.use(verifyJWT);
+// All client CRM routes require authentication, staff only (clients don't manage the CRM)
+router.use(verifyJWT, authorize("super-admin", "admin", "user"));
 
 // Statistics MUST come before /:clientId
 router.get("/statistics", getClientStatistics);

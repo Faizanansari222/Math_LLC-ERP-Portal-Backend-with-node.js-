@@ -8,12 +8,12 @@ import {
   getEmployeeProjects,
   getEmployeeDashboard,
 } from "../controllers/project.controllers.js";
-import { verifyJWT } from "../middleware/auth.middleware.js";
+import { verifyJWT, authorize } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-// All routes require authentication
-router.use(verifyJWT);
+// All routes require authentication, staff only (clients have no project access)
+router.use(verifyJWT, authorize("super-admin", "admin", "user"));
 
 // Employee dashboard (must come before /:projectId)
 router.get("/dashboard/:employeeId", getEmployeeDashboard);

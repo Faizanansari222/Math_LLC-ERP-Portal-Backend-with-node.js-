@@ -10,12 +10,12 @@ import {
   getAllTimesheets,
   getTimesheetsByEmployee,
 } from "../controllers/performance.controllers.js";
-import { verifyJWT } from "../middleware/auth.middleware.js";
+import { verifyJWT, authorize } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-// All routes require authentication
-router.use(verifyJWT);
+// All routes require authentication, staff only (clients have no access to internal HR/performance data)
+router.use(verifyJWT, authorize("super-admin", "admin", "user"));
 
 // ========== Timesheet Routes ==========
 // GET /api/v1/performance/my-timesheets - get current user's timesheets

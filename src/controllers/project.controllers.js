@@ -284,6 +284,8 @@ const getEmployeeProjects = asyncHandler(async (req, res) => {
     projectStats[s._id] = s.count;
   });
 
+  const totalPages = Math.ceil(totalProjects / limit);
+
   return res.status(200).json(
     new ApiResponse(
       200,
@@ -293,7 +295,7 @@ const getEmployeeProjects = asyncHandler(async (req, res) => {
         stats: projectStats,
         pagination: {
           currentPage: page,
-          totalPages: Math.ceil(totalProjects / limit),
+          totalPages,
           totalProjects,
           limit,
           hasNextPage: page < totalPages,
