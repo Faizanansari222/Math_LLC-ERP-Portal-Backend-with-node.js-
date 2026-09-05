@@ -146,9 +146,113 @@ const sendProjectUpdateEmail = async ({
   });
 };
 
+/**
+ * Send a client invitation email via Resend
+ */
+const sendInvitationEmail = async ({ to, clientName, invitationUrl, invitedByName }) => {
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>You're Invited to Math LLC ERP</title>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: Arial, Helvetica, sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 0;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+              <!-- Header -->
+              <tr>
+                <td style="background-color: #4F46E5; padding: 24px 32px; text-align: center;">
+                  <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">Math LLC ERP</h1>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding: 32px;">
+                  <h2 style="color: #111827; font-size: 20px; margin: 0 0 16px;">You've Been Invited!</h2>
+                  <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+                    Hello <strong>${clientName}</strong>,
+                  </p>
+                  <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+                    <strong>${invitedByName}</strong> has invited you to join <strong>Math LLC ERP</strong> — our platform for tax preparation, payroll management, bookkeeping, and business formation services.
+                  </p>
+                  <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+                    Click the button below to accept your invitation and create your account. This link will expire in <strong>24 hours</strong>.
+                  </p>
+                  <!-- CTA Button -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
+                    <tr>
+                      <td style="border-radius: 6px; background-color: #4F46E5;">
+                        <a href="${invitationUrl}" target="_blank" style="display: inline-block; padding: 14px 32px; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; border-radius: 6px;">Accept Invitation</a>
+                      </td>
+                    </tr>
+                  </table>
+                  <p style="color: #6b7280; font-size: 13px; line-height: 1.5; margin: 24px 0 0;">
+                    If the button doesn't work, copy and paste this URL into your browser:<br />
+                    <a href="${invitationUrl}" style="color: #4F46E5; word-break: break-all;">${invitationUrl}</a>
+                  </p>
+                </td>
+              </tr>
+              <!-- Security Notice -->
+              <tr>
+                <td style="padding: 0 32px 24px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #FEF3C7; border-radius: 6px; border: 1px solid #F59E0B;">
+                    <tr>
+                      <td style="padding: 12px 16px;">
+                        <p style="color: #92400E; font-size: 13px; line-height: 1.5; margin: 0;">
+                          <strong>⚠️ Security Notice:</strong> If you did not expect this invitation, please ignore this email or contact our support team. Do not share this link with anyone.
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+                  <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+                    This invitation was sent by Math LLC ERP System. © ${new Date().getFullYear()} Math LLC. All rights reserved.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+
+  const text = [
+    `You've Been Invited to Math LLC ERP`,
+    ``,
+    `Hello ${clientName},`,
+    ``,
+    `${invitedByName} has invited you to join Math LLC ERP — our platform for tax preparation, payroll management, bookkeeping, and business formation services.`,
+    ``,
+    `Accept your invitation by visiting the link below (valid for 24 hours):`,
+    `${invitationUrl}`,
+    ``,
+    `If you did not expect this invitation, please ignore this email or contact our support team.`,
+    ``,
+    `© ${new Date().getFullYear()} Math LLC. All rights reserved.`,
+  ].join("\n");
+
+  return sendEmail({
+    to,
+    subject: "You're Invited to Math LLC ERP",
+    html,
+    text,
+  });
+};
+
 export {
   sendClientEmail,
   sendWelcomeEmail,
   sendTaxStatusEmail,
   sendProjectUpdateEmail,
+  sendInvitationEmail,
 };
