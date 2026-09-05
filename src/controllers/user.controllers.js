@@ -52,7 +52,7 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "All fields are required");
   }
 
-  const existingUser = await User.findOne({ email });
+  const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
   if (existingUser) {
     throw new ApiError(409, "User already exists");
   }
@@ -95,9 +95,9 @@ const loginUser = asyncHandler(async (req, res) => {
   if ([email, password].some((field) => field?.trim() === "")) {
     throw new ApiError(400, "All fields are required");
   }
-  console.log(email,password)
 
-  const user = await User.findOne({ email }).select("+password");
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = await User.findOne({ email: normalizedEmail }).select("+password");
   if (!user) throw new ApiError(404, "User not found");
 
   const isPasswordMatch = await user.isCorrectPassword(password);
