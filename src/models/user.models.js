@@ -90,7 +90,7 @@ const userSchema = mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["super-admin", "admin", "user"],
+      enum: ["super-admin", "admin", "user", "client"],
       default: "user",
     },
     timesheets: [timesheetSchema],
