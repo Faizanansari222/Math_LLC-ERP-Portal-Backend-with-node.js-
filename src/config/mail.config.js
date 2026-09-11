@@ -1,12 +1,22 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Instantiated lazily (rather than at module load) so a missing
+// RESEND_API_KEY doesn't crash the whole process on startup — server.js
+// already warns loudly about this via checkEmailEnv(); we only want the
+// hard failure to happen when an email is actually attempted.
+let resend;
+const getResendClient = () => {
+  if (!resend) {
+    resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return resend;
+};
 
 const sendEmail = async ({ to, subject, html, text, attachments }) => {
   let data, error;
 
   try {
-    ({ data, error } = await resend.emails.send({
+    ({ data, error } = await getResendClient().emails.send({
       from: process.env.EMAIL_FROM,
       to,
       subject,
