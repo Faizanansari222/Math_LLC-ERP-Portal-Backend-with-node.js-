@@ -17,8 +17,28 @@ const invitationSchema = new mongoose.Schema(
     role: {
       type: String,
       required: [true, "Role is required"],
-      enum: ["client"],
+      enum: ["client", "admin", "user"],
       default: "client",
+    },
+    // Staff-only (role "admin" | "user") — the CRM Client model has its
+    // own department/experience-equivalent fields, so these stay unset
+    // for client invitations.
+    department: {
+      type: String,
+      enum: [
+        "tax",
+        "payroll",
+        "bookkeeping",
+        "formation",
+        "management",
+        "social-media",
+        "design",
+        "development",
+      ],
+    },
+    experience: {
+      type: String,
+      enum: ["entry-level", "mid-level", "senior-level", "lead-level"],
     },
     invitedBy: {
       type: mongoose.Schema.Types.ObjectId,

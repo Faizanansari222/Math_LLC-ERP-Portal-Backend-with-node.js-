@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   inviteClient,
+  inviteStaff,
   getAllInvitations,
   getInvitation,
   acceptInvitation,
@@ -18,6 +19,10 @@ router
 router
   .route("/client")
   .post(verifyJWT, authorize("super-admin", "admin"), inviteClient);
+
+router
+  .route("/staff")
+  .post(verifyJWT, authorize("super-admin", "admin"), inviteStaff);
 
 router
   .route("/:id/resend")

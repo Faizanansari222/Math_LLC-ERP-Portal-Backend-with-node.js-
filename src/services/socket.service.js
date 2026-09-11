@@ -93,66 +93,12 @@ const initSocketIO = (httpServer, app) => {
       console.log(`📁 ${socket.user.firstName} left conversation room: ${roomName}`);
     });
 
-    // Send a message (real-time)
-    socket.on("send-message", async (data) => {
-      try {
-        const { receiverId, content } = data;
-
-        if (!receiverId || !content?.trim()) {
-          return socket.emit("error", { message: "Receiver and content are required" });
-        }
-
-        // Dynamic import to avoid circular dependencies
-        const { Message } = await import("../models/message.models.js");
-
-        // Save message to database
-        const message = await Message.create({
-          sender: userId,
-          receiver: receiverId,
-          content: content.trim(),
-        });
-
-        const populatedMessage = await Message.findById(message._id)
-          .populate("sender", "firstName lastName email userImage")
-          .populate("receiver", "firstName lastName email userImage");
-
-        // Emit to conversation room (both sender and receiver)
-        const roomName = getConversationRoom(userId, receiverId);
-        io.to(roomName).emit("new-message", populatedMessage);
-
-        // Also emit to receiver's personal room (for conversation list updates)
-        io.to(`user:${receiverId}`).emit("message-received", {
-          message: populatedMessage,
-          from: {
-            _id: userId,
-            firstName: socket.user.firstName,
-            lastName: socket.user.lastName,
-          },
-        });
-
-        // Create notification for the receiver
-        const { Notification } = await import("../models/notification.models.js");
-        const notification = await Notification.create({
-          recipient: receiverId,
-          sender: userId,
-          type: "message-received",
-          title: "New Message",
-          message: `You have a new message from ${socket.user.firstName} ${socket.user.lastName}`,
-          entityType: "message",
-          entityId: message._id,
-        });
-
-        // Send real-time notification to receiver
-        io.to(`user:${receiverId}`).emit("notification", notification);
-
-        // Confirm to sender
-        socket.emit("message-sent", populatedMessage);
-
-      } catch (error) {
-        console.error("Error sending message:", error);
-        socket.emit("error", { message: "Failed to send message" });
-      }
-    });
+    // Note: sending a message goes through POST /api/v1/messages (REST) so
+    // it's reliable even if this socket connection is briefly down — that
+    // endpoint already emits "new-message" / "message-received" /
+    // "notification" to this same room and to `user:${receiverId}` once the
+    // message is saved. There's no socket.on("send-message") here anymore
+    // to avoid two code paths that can create a message.
 
     // Mark messages as read
     socket.on("mark-read", async (data) => {

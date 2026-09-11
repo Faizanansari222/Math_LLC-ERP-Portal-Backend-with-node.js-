@@ -249,10 +249,226 @@ const sendInvitationEmail = async ({ to, clientName, invitationUrl, invitedByNam
   });
 };
 
+/**
+ * Send a staff (employee/admin) invitation email via Resend.
+ * Same structure/branding as sendInvitationEmail, but staff-oriented
+ * copy — no "client portal" language, and mentions the role/department
+ * being granted.
+ */
+const sendStaffInvitationEmail = async ({
+  to,
+  name,
+  invitationUrl,
+  invitedByName,
+  role,
+  department,
+}) => {
+  const roleLabel = role === "admin" ? "Admin" : "Team Member";
+  const departmentLabel = department
+    ? department
+        .split("-")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ")
+    : null;
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>You've Been Invited to Join Math LLC ERP</title>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: Arial, Helvetica, sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 0;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+              <!-- Header -->
+              <tr>
+                <td style="background-color: #4F46E5; padding: 24px 32px; text-align: center;">
+                  <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">Math LLC ERP</h1>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding: 32px;">
+                  <h2 style="color: #111827; font-size: 20px; margin: 0 0 16px;">You've Been Invited to Join the Team!</h2>
+                  <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+                    Hello <strong>${name}</strong>,
+                  </p>
+                  <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+                    <strong>${invitedByName}</strong> has invited you to join <strong>Math LLC ERP</strong> as ${roleLabel === "Admin" ? "an" : "a"} <strong>${roleLabel}</strong>${departmentLabel ? ` in <strong>${departmentLabel}</strong>` : ""}.
+                  </p>
+                  <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+                    Click the button below to activate your account and set your own password. This link will expire in <strong>24 hours</strong>.
+                  </p>
+                  <!-- CTA Button -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
+                    <tr>
+                      <td style="border-radius: 6px; background-color: #4F46E5;">
+                        <a href="${invitationUrl}" target="_blank" style="display: inline-block; padding: 14px 32px; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; border-radius: 6px;">Activate Your Account</a>
+                      </td>
+                    </tr>
+                  </table>
+                  <p style="color: #6b7280; font-size: 13px; line-height: 1.5; margin: 24px 0 0;">
+                    If the button doesn't work, copy and paste this URL into your browser:<br />
+                    <a href="${invitationUrl}" style="color: #4F46E5; word-break: break-all;">${invitationUrl}</a>
+                  </p>
+                </td>
+              </tr>
+              <!-- Security Notice -->
+              <tr>
+                <td style="padding: 0 32px 24px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #FEF3C7; border-radius: 6px; border: 1px solid #F59E0B;">
+                    <tr>
+                      <td style="padding: 12px 16px;">
+                        <p style="color: #92400E; font-size: 13px; line-height: 1.5; margin: 0;">
+                          <strong>⚠️ Security Notice:</strong> If you did not expect this invitation, please ignore this email or contact your administrator. Do not share this link with anyone.
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+                  <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+                    This invitation was sent by Math LLC ERP System. © ${new Date().getFullYear()} Math LLC. All rights reserved.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+
+  const text = [
+    `You've Been Invited to Join Math LLC ERP`,
+    ``,
+    `Hello ${name},`,
+    ``,
+    `${invitedByName} has invited you to join Math LLC ERP as a ${roleLabel}${departmentLabel ? ` in ${departmentLabel}` : ""}.`,
+    ``,
+    `Activate your account by visiting the link below and setting your password (valid for 24 hours):`,
+    `${invitationUrl}`,
+    ``,
+    `If you did not expect this invitation, please ignore this email or contact your administrator.`,
+    ``,
+    `© ${new Date().getFullYear()} Math LLC. All rights reserved.`,
+  ].join("\n");
+
+  return sendEmail({
+    to,
+    subject: "You've been invited to join Math LLC ERP",
+    html,
+    text,
+  });
+};
+
+/**
+ * Send a password reset email via Resend
+ */
+const sendPasswordResetEmail = async ({ to, firstName, resetUrl }) => {
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Reset Your Math LLC ERP Password</title>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: Arial, Helvetica, sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 0;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+              <tr>
+                <td style="background-color: #4F46E5; padding: 24px 32px; text-align: center;">
+                  <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">Math LLC ERP</h1>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 32px;">
+                  <h2 style="color: #111827; font-size: 20px; margin: 0 0 16px;">Reset Your Password</h2>
+                  <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+                    Hello <strong>${firstName}</strong>,
+                  </p>
+                  <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+                    We received a request to reset your password. Click the button below to choose a new one. This link will expire in <strong>1 hour</strong>.
+                  </p>
+                  <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
+                    <tr>
+                      <td style="border-radius: 6px; background-color: #4F46E5;">
+                        <a href="${resetUrl}" target="_blank" style="display: inline-block; padding: 14px 32px; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; border-radius: 6px;">Reset Password</a>
+                      </td>
+                    </tr>
+                  </table>
+                  <p style="color: #6b7280; font-size: 13px; line-height: 1.5; margin: 24px 0 0;">
+                    If the button doesn't work, copy and paste this URL into your browser:<br />
+                    <a href="${resetUrl}" style="color: #4F46E5; word-break: break-all;">${resetUrl}</a>
+                  </p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 0 32px 24px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #FEF3C7; border-radius: 6px; border: 1px solid #F59E0B;">
+                    <tr>
+                      <td style="padding: 12px 16px;">
+                        <p style="color: #92400E; font-size: 13px; line-height: 1.5; margin: 0;">
+                          <strong>⚠️ Security Notice:</strong> If you did not request a password reset, you can safely ignore this email — your password will not change unless you click the link above.
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color: #f9fafb; padding: 16px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+                  <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+                    This email was sent by Math LLC ERP System. © ${new Date().getFullYear()} Math LLC. All rights reserved.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+
+  const text = [
+    `Reset Your Math LLC ERP Password`,
+    ``,
+    `Hello ${firstName},`,
+    ``,
+    `We received a request to reset your password. Visit the link below to choose a new one (valid for 1 hour):`,
+    `${resetUrl}`,
+    ``,
+    `If you did not request this, you can safely ignore this email.`,
+    ``,
+    `© ${new Date().getFullYear()} Math LLC. All rights reserved.`,
+  ].join("\n");
+
+  return sendEmail({
+    to,
+    subject: "Reset Your Math LLC ERP Password",
+    html,
+    text,
+  });
+};
+
 export {
   sendClientEmail,
   sendWelcomeEmail,
   sendTaxStatusEmail,
   sendProjectUpdateEmail,
   sendInvitationEmail,
+  sendStaffInvitationEmail,
+  sendPasswordResetEmail,
 };

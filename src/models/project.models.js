@@ -56,7 +56,15 @@ const projectSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "in-progress", "completed", "on-hold", "cancelled"],
+      enum: [
+        "pending",
+        "in-progress",
+        "submitted",
+        "changes-requested",
+        "completed",
+        "on-hold",
+        "cancelled",
+      ],
       default: "pending",
       index: true,
     },
@@ -89,15 +97,78 @@ const projectSchema = new mongoose.Schema(
       max: 100,
       default: 0,
     },
+
+    // Set once a "deadline approaching" reminder notification has been sent,
+    // so the reminder job doesn't notify the same task twice.
+    deadlineReminderSent: {
+      type: Boolean,
+      default: false,
+    },
+
+    // Task workflow fields
+    submissionComment: {
+      type: String,
+      trim: true,
+      maxlength: [1000, "Submission comment cannot exceed 1000 characters"],
+    },
+    submittedAt: {
+      type: Date,
+    },
+    adminComment: {
+      type: String,
+      trim: true,
+      maxlength: [1000, "Admin comment cannot exceed 1000 characters"],
+    },
+
+    // Activity / audit trail
+    activity: [
+      {
+        action: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        user: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        comment: {
+          type: String,
+          trim: true,
+          maxlength: [1000, "Activity comment cannot exceed 1000 characters"],
+        },
+        previousStatus: {
+          type: String,
+        },
+        newStatus: {
+          type: String,
+        },
+        timestamp: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   { timestamps: true }
 );
+
+// Compound index for the common "employee's tasks by status" query pattern
+projectSchema.index({ assignedTo: 1, status: 1 });
+
+// Used by the deadline-reminder job to efficiently find tasks due soon
+projectSchema.index({ deadline: 1, status: 1 });
 
 // Auto-set completedAt when status changes to completed
 projectSchema.pre("save", function (next) {
   if (this.isModified("status") && this.status === "completed" && !this.completedAt) {
     this.completedAt = new Date();
     this.progress = 100;
+  }
+  // If the deadline is pushed out, allow a fresh reminder to fire for it
+  if (this.isModified("deadline") && !this.isNew) {
+    this.deadlineReminderSent = false;
   }
   next();
 });

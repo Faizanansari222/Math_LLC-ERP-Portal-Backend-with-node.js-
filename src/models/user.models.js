@@ -74,6 +74,7 @@ const userSchema = mongoose.Schema(
         "social-media",
         "design",
         "development",
+        "sales",
       ],
     },
 
@@ -93,9 +94,33 @@ const userSchema = mongoose.Schema(
       enum: ["super-admin", "admin", "user", "client"],
       default: "user",
     },
+    // For role "client": links this login account to its business/CRM
+    // record. Resolved by matching email at account-creation time (see
+    // invitation.controllers.js and client.controllers.js).
+    client: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Client",
+      default: null,
+    },
     timesheets: [timesheetSchema],
     refreshToken: {
       type: String,
+    },
+    notificationPreferences: {
+      messages: {
+        type: Boolean,
+        default: true,
+      },
+    },
+    // Hashed password-reset token — never the raw token (same pattern as
+    // Invitation.tokenHash). Cleared once used or once a new one is issued.
+    passwordResetToken: {
+      type: String,
+      select: false,
+    },
+    passwordResetExpires: {
+      type: Date,
+      select: false,
     },
   },
   {

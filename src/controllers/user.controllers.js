@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import {
@@ -6,6 +7,7 @@ import {
 } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { User } from "../models/user.models.js";
+import { sendPasswordResetEmail } from "../services/mail.service.js";
 import jwt from "jsonwebtoken";
 
 const generateAccessAndRefreshToken = async (userId) => {
@@ -214,6 +216,120 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "Password changed successfully"));
 });
 
+// ============================================================
+// FORGOT PASSWORD (public)
+// POST /api/v1/users/forgot-password
+// ============================================================
+const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email?.trim()) {
+    throw new ApiError(400, "Email is required");
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const genericMessage =
+    "If an account exists for that email, a password reset link has been sent.";
+
+  const user = await User.findOne({ email: normalizedEmail });
+
+  // Always respond the same way whether or not the account exists, so this
+  // endpoint can't be used to enumerate registered emails.
+  if (!user) {
+    return res.status(200).json(new ApiResponse(200, {}, genericMessage));
+  }
+
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+
+  user.passwordResetToken = tokenHash;
+  user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+  await user.save({ validateBeforeSave: false });
+
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+  const resetUrl = `${frontendUrl}/reset-password/${rawToken}`;
+
+  try {
+    await sendPasswordResetEmail({
+      to: user.email,
+      firstName: user.firstName,
+      resetUrl,
+    });
+  } catch (emailError) {
+    // Don't leave a dangling reset token if the email never went out
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+    console.error("Failed to send password reset email:", emailError.message);
+    throw new ApiError(500, "Failed to send password reset email. Please try again.");
+  }
+
+  return res.status(200).json(new ApiResponse(200, {}, genericMessage));
+});
+
+// ============================================================
+// RESET PASSWORD (public)
+// POST /api/v1/users/reset-password/:token
+// ============================================================
+const resetPassword = asyncHandler(async (req, res) => {
+  const { token } = req.params;
+  const { password } = req.body;
+
+  if (!token) {
+    throw new ApiError(400, "Reset token is required");
+  }
+  if (!password || password.length < 8) {
+    throw new ApiError(400, "Password must be at least 8 characters long");
+  }
+
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+  const user = await User.findOne({
+    passwordResetToken: tokenHash,
+    passwordResetExpires: { $gt: new Date() },
+  }).select("+passwordResetToken +passwordResetExpires");
+
+  if (!user) {
+    throw new ApiError(400, "This password reset link is invalid or has expired");
+  }
+
+  user.password = password; // pre-save hook hashes it
+  user.passwordResetToken = undefined;
+  user.passwordResetExpires = undefined;
+  // A password reset invalidates any existing session
+  user.refreshToken = undefined;
+  await user.save();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password reset successfully. Please sign in."));
+});
+
+// ============================================================
+// UPDATE NOTIFICATION PREFERENCES (self-service)
+// PATCH /api/v1/users/notification-preferences
+// ============================================================
+const updateNotificationPreferences = asyncHandler(async (req, res) => {
+  const { messages } = req.body;
+
+  if (messages === undefined) {
+    throw new ApiError(400, "No notification preference provided");
+  }
+  if (typeof messages !== "boolean") {
+    throw new ApiError(400, "messages must be true or false");
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $set: { "notificationPreferences.messages": messages } },
+    { new: true }
+  ).select("-password -refreshToken");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Notification preferences updated"));
+});
+
 const getAllUsers = asyncHandler(async (req, res) => {
   // pagination via query params: /users?page=2&limit=10
   const page = parseInt(req.query.page) || 1;
@@ -261,6 +377,27 @@ const getCurrentUser = asyncHandler(async (req, res) => {
     "-password -refreshToken",
   );
   return res.status(200).json(new ApiResponse(200, user, "User found"));
+});
+
+// ============================================================
+// GET USER BY ID (self, or admin/super-admin viewing any employee)
+// GET /api/v1/users/:userId
+// ============================================================
+const getUserById = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  const isSelf = req.user._id.toString() === userId;
+  const isAdmin = ["admin", "super-admin"].includes(req.user.role);
+  if (!isSelf && !isAdmin) {
+    throw new ApiError(403, "You are not authorized to view this profile");
+  }
+
+  const user = await User.findById(userId).select("-password -refreshToken");
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  return res.status(200).json(new ApiResponse(200, user, "User fetched successfully"));
 });
 
 const adminUpdateUser = asyncHandler(async (req, res) => {
@@ -325,6 +462,41 @@ const adminUpdateUser = asyncHandler(async (req, res) => {
     );
 });
 
+// ============================================================
+// DELETE USER (Admin/Super Admin only)
+// DELETE /api/v1/users/:userId
+// ============================================================
+const deleteUser = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  if (!userId) {
+    throw new ApiError(400, "User ID is required");
+  }
+
+  if (userId === req.user._id.toString()) {
+    throw new ApiError(400, "You cannot delete your own account");
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  // Only super-admins can delete other admins/super-admins
+  if (
+    ["admin", "super-admin"].includes(user.role) &&
+    req.user.role !== "super-admin"
+  ) {
+    throw new ApiError(403, "Only a super admin can delete an admin account");
+  }
+
+  await User.findByIdAndDelete(userId);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Employee deleted successfully"));
+});
+
 const profileImageUpdate = asyncHandler(async (req, res) => {
   const userImageLocalPath = req.files?.userImage?.[0]?.path;
   if (!userImageLocalPath) throw new ApiError(400, "User image is required");
@@ -357,14 +529,58 @@ const profileImageUpdate = asyncHandler(async (req, res) => {
     );
 });
 
+// ============================================================
+// ADMIN: SET AN EMPLOYEE'S PROFILE IMAGE (Admin/Super Admin only)
+// PATCH /api/v1/users/admin/:userId/profile-image
+// ============================================================
+const adminUpdateUserImage = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  const userImageLocalPath = req.files?.userImage?.[0]?.path;
+  if (!userImageLocalPath) throw new ApiError(400, "User image is required");
+
+  const existingUser = await User.findById(userId).select("userImage");
+  if (!existingUser) {
+    throw new ApiError(404, "User not found");
+  }
+  const oldImageUrl = existingUser.userImage;
+
+  const profileImage = await uploadOnCloudinary(userImageLocalPath);
+  if (!profileImage?.url) {
+    throw new ApiError(400, "Error while uploading user image");
+  }
+
+  const updatedUser = await User.findByIdAndUpdate(
+    userId,
+    { $set: { userImage: profileImage.url } },
+    { new: true },
+  ).select("-password -refreshToken");
+
+  if (oldImageUrl) {
+    await deleteFromCloudinary(oldImageUrl);
+  }
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, updatedUser, "Employee image updated successfully"),
+    );
+});
+
 export {
   registerUser,
   loginUser,
   logoutUser,
   refreshAccessToken,
   changeCurrentPassword,
+  forgotPassword,
+  resetPassword,
+  updateNotificationPreferences,
   getCurrentUser,
+  getUserById,
   getAllUsers,
   adminUpdateUser,
+  deleteUser,
   profileImageUpdate,
+  adminUpdateUserImage,
 };

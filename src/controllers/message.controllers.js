@@ -32,7 +32,8 @@ const sendMessage = asyncHandler(async (req, res) => {
     .populate("sender", "firstName lastName email userImage")
     .populate("receiver", "firstName lastName email userImage");
 
-  // Emit real-time message via Socket.io
+  // Emit real-time message via Socket.io — the chat content itself always
+  // delivers regardless of notification preferences below.
   const io = req.app.get("io");
   if (io) {
     // Create conversation room name (consistent with socket service)
@@ -50,8 +51,11 @@ const sendMessage = asyncHandler(async (req, res) => {
         lastName: req.user.lastName,
       },
     });
+  }
 
-    // Send real-time notification to receiver
+  // The bell/toast notification is separate from the chat delivery above,
+  // and respects the receiver's own preference (default: on).
+  if (receiver.notificationPreferences?.messages !== false) {
     const notification = await Notification.create({
       recipient: receiverId,
       sender: req.user._id,
@@ -62,18 +66,9 @@ const sendMessage = asyncHandler(async (req, res) => {
       entityId: message._id,
     });
 
-    io.to(`user:${receiverId}`).emit("notification", notification);
-  } else {
-    // Fallback: create notification without real-time (SSE)
-    await Notification.create({
-      recipient: receiverId,
-      sender: req.user._id,
-      type: "message-received",
-      title: "New Message",
-      message: `You have a new message from ${req.user.firstName} ${req.user.lastName}`,
-      entityType: "message",
-      entityId: message._id,
-    });
+    if (io) {
+      io.to(`user:${receiverId}`).emit("notification", notification);
+    }
   }
 
   return res.status(201).json(
@@ -139,6 +134,7 @@ const getConversation = asyncHandler(async (req, res) => {
           lastName: otherUser.lastName,
           email: otherUser.email,
           userImage: otherUser.userImage,
+          role: otherUser.role,
         },
         pagination: {
           currentPage: page,
@@ -212,6 +208,7 @@ const getAllConversations = asyncHandler(async (req, res) => {
           email: "$user.email",
           userImage: "$user.userImage",
           department: "$user.department",
+          role: "$user.role",
         },
         lastMessage: {
           content: "$lastMessage.content",

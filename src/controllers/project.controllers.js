@@ -5,6 +5,29 @@ import { Task } from "../models/task.models.js";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { createNotification } from "./notification.controllers.js";
+
+// ============================================================
+// HELPER: Record an activity entry on a project (in-memory push,
+// caller is responsible for saving the document)
+// ============================================================
+const recordActivity = (project, { action, user, comment, previousStatus, newStatus }) => {
+  project.activity.push({
+    action,
+    user,
+    comment,
+    previousStatus,
+    newStatus,
+    timestamp: new Date(),
+  });
+};
+
+const populateProject = (query) =>
+  query
+    .populate("client", "firstName lastName businessName email phone services")
+    .populate("assignedTo", "firstName lastName email department userImage")
+    .populate("assignedBy", "firstName lastName email userImage")
+    .populate("activity.user", "firstName lastName email role");
 
 // ============================================================
 // ASSIGN PROJECT (Admin only)
@@ -44,14 +67,35 @@ const assignProject = asyncHandler(async (req, res) => {
     notes: notes?.trim(),
   });
 
-  const createdProject = await Project.findById(project._id)
-    .populate("client", "firstName lastName businessName email")
-    .populate("assignedTo", "firstName lastName email department")
-    .populate("assignedBy", "firstName lastName email");
+  recordActivity(project, {
+    action: "Task Created",
+    user: req.user._id,
+    newStatus: project.status,
+  });
+  recordActivity(project, {
+    action: `Assigned to ${employee.firstName} ${employee.lastName}`,
+    user: req.user._id,
+  });
+  await project.save({ validateBeforeSave: false });
+
+  const createdProject = await populateProject(Project.findById(project._id));
 
   if (!createdProject) {
     throw new ApiError(500, "Something went wrong while creating the project");
   }
+
+  // Notify the assigned employee
+  const assignerName = `${req.user.firstName} ${req.user.lastName}`;
+  await createNotification({
+    recipient: assignedTo,
+    sender: req.user._id,
+    type: "task-assigned",
+    title: "New Task Assigned",
+    message: `${assignerName} assigned you a new task: "${createdProject.title}".`,
+    entityType: "project",
+    entityId: createdProject._id,
+    io: req.app.get("io"),
+  });
 
   return res
     .status(201)
@@ -71,16 +115,27 @@ const getAllProjects = asyncHandler(async (req, res) => {
 
   const filter = {};
 
-  // If employee, only show their projects
-  if (req.user.role === "user") {
-    filter.assignedTo = req.user._id;
-  }
-
   if (status) filter.status = status;
   if (priority) filter.priority = priority;
   if (assignedTo) filter.assignedTo = assignedTo;
   if (client) filter.client = client;
   if (serviceType) filter.serviceType = serviceType;
+
+  // Scope by role LAST so query-string params above can never widen access
+  // beyond what the caller is actually allowed to see.
+  if (req.user.role === "user") {
+    // Employees only ever see their own assigned projects
+    filter.assignedTo = req.user._id;
+  } else if (req.user.role === "client") {
+    if (!req.user.client) {
+      throw new ApiError(
+        404,
+        "No client profile is linked to this account yet. Please contact your account manager.",
+      );
+    }
+    // Clients only ever see projects for their own linked CRM record
+    filter.client = req.user.client;
+  }
 
   if (search?.trim()) {
     const searchTerm = search.trim();
@@ -94,8 +149,8 @@ const getAllProjects = asyncHandler(async (req, res) => {
   const [projects, totalProjects] = await Promise.all([
     Project.find(filter)
       .populate("client", "firstName lastName businessName email")
-      .populate("assignedTo", "firstName lastName email department")
-      .populate("assignedBy", "firstName lastName email")
+      .populate("assignedTo", "firstName lastName email department userImage")
+      .populate("assignedBy", "firstName lastName email userImage")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit),
@@ -130,10 +185,7 @@ const getAllProjects = asyncHandler(async (req, res) => {
 const getProjectById = asyncHandler(async (req, res) => {
   const { projectId } = req.params;
 
-  const project = await Project.findById(projectId)
-    .populate("client", "firstName lastName businessName email phone services")
-    .populate("assignedTo", "firstName lastName email department")
-    .populate("assignedBy", "firstName lastName email");
+  const project = await populateProject(Project.findById(projectId));
 
   if (!project) throw new ApiError(404, "Project not found");
 
@@ -142,10 +194,21 @@ const getProjectById = asyncHandler(async (req, res) => {
     throw new ApiError(403, "You can only view your own projects");
   }
 
-  // Get related tasks for this project
-  const tasks = await Task.find({ assignedTo: project.assignedTo._id })
-    .sort({ createdAt: -1 })
-    .limit(5);
+  // Clients can only see projects for their own linked CRM record
+  if (req.user.role === "client") {
+    if (!req.user.client || project.client._id.toString() !== req.user.client.toString()) {
+      throw new ApiError(403, "You can only view your own projects");
+    }
+  }
+
+  // Get related tasks for this project (internal staff task list — not
+  // client-facing data, so skip it for the client role)
+  const tasks =
+    req.user.role === "client"
+      ? []
+      : await Task.find({ assignedTo: project.assignedTo._id })
+          .sort({ createdAt: -1 })
+          .limit(5);
 
   return res.status(200).json(
     new ApiResponse(
@@ -170,13 +233,20 @@ const updateProject = asyncHandler(async (req, res) => {
   const existingProject = await Project.findById(projectId);
   if (!existingProject) throw new ApiError(404, "Project not found");
 
-  // Employees can only update status/progress/notes on their own projects
+  // Clients have read-only access to their projects
+  if (req.user.role === "client") {
+    throw new ApiError(403, "Clients cannot update projects");
+  }
+
+  // Employees can only update progress/notes on their own projects.
+  // Status changes must go through the dedicated workflow endpoints
+  // (start/submit/approve/request-changes) so transitions and
+  // notifications stay consistent and enforced server-side.
   if (req.user.role === "user") {
     if (existingProject.assignedTo.toString() !== req.user._id.toString()) {
       throw new ApiError(403, "You can only update your own projects");
     }
-    // Employees can only change status, progress, and notes
-    const allowedFields = ["status", "progress", "notes"];
+    const allowedFields = ["progress", "notes"];
     const restrictedUpdate = {};
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
@@ -198,8 +268,8 @@ const updateProject = asyncHandler(async (req, res) => {
     { new: true, runValidators: true }
   )
     .populate("client", "firstName lastName businessName email")
-    .populate("assignedTo", "firstName lastName email department")
-    .populate("assignedBy", "firstName lastName email");
+    .populate("assignedTo", "firstName lastName email department userImage")
+    .populate("assignedBy", "firstName lastName email userImage");
 
   if (!updatedProject) throw new ApiError(404, "Project not found");
 
@@ -253,7 +323,7 @@ const getEmployeeProjects = asyncHandler(async (req, res) => {
   const [projects, totalProjects] = await Promise.all([
     Project.find(filter)
       .populate("client", "firstName lastName businessName email")
-      .populate("assignedBy", "firstName lastName email")
+      .populate("assignedBy", "firstName lastName email userImage")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit),
@@ -284,6 +354,8 @@ const getEmployeeProjects = asyncHandler(async (req, res) => {
     projectStats[s._id] = s.count;
   });
 
+  const totalPages = Math.ceil(totalProjects / limit);
+
   return res.status(200).json(
     new ApiResponse(
       200,
@@ -293,7 +365,7 @@ const getEmployeeProjects = asyncHandler(async (req, res) => {
         stats: projectStats,
         pagination: {
           currentPage: page,
-          totalPages: Math.ceil(totalProjects / limit),
+          totalPages,
           totalProjects,
           limit,
           hasNextPage: page < totalPages,
@@ -427,6 +499,237 @@ const getEmployeeDashboard = asyncHandler(async (req, res) => {
   );
 });
 
+// ============================================================
+// START TASK (assigned employee only)
+// PATCH /api/v1/projects/:projectId/start
+// pending -> in-progress
+// changes-requested -> in-progress ("Start Changes")
+// ============================================================
+const startProject = asyncHandler(async (req, res) => {
+  const { projectId } = req.params;
+
+  const project = await Project.findById(projectId);
+  if (!project) throw new ApiError(404, "Project not found");
+
+  if (project.assignedTo.toString() !== req.user._id.toString()) {
+    throw new ApiError(403, "You can only start your own tasks");
+  }
+
+  if (!["pending", "changes-requested"].includes(project.status)) {
+    throw new ApiError(
+      409,
+      `Cannot start a task with status "${project.status}"`
+    );
+  }
+
+  const previousStatus = project.status;
+  const isResuming = previousStatus === "changes-requested";
+
+  project.status = "in-progress";
+  recordActivity(project, {
+    action: isResuming ? "Resumed work after changes requested" : "Started by " + `${req.user.firstName} ${req.user.lastName}`,
+    user: req.user._id,
+    previousStatus,
+    newStatus: "in-progress",
+  });
+
+  await project.save({ validateBeforeSave: false });
+
+  const updatedProject = await populateProject(Project.findById(project._id));
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, updatedProject, "Task started"));
+});
+
+// ============================================================
+// SUBMIT TASK (assigned employee only)
+// PATCH /api/v1/projects/:projectId/submit
+// in-progress -> submitted
+// ============================================================
+const submitProject = asyncHandler(async (req, res) => {
+  const { projectId } = req.params;
+  const { comment } = req.body;
+
+  const project = await Project.findById(projectId).populate(
+    "assignedBy",
+    "firstName lastName email"
+  );
+  if (!project) throw new ApiError(404, "Project not found");
+
+  if (project.assignedTo.toString() !== req.user._id.toString()) {
+    throw new ApiError(403, "You can only submit your own tasks");
+  }
+
+  if (project.status !== "in-progress") {
+    throw new ApiError(
+      409,
+      `Cannot submit a task with status "${project.status}". Start the task first.`
+    );
+  }
+
+  const previousStatus = project.status;
+  const isResubmission = !!project.adminComment;
+
+  project.status = "submitted";
+  project.submissionComment = comment?.trim() || "";
+  project.submittedAt = new Date();
+
+  recordActivity(project, {
+    action: isResubmission ? "Resubmitted by " + `${req.user.firstName} ${req.user.lastName}` : "Submitted by " + `${req.user.firstName} ${req.user.lastName}`,
+    user: req.user._id,
+    comment: project.submissionComment,
+    previousStatus,
+    newStatus: "submitted",
+  });
+
+  await project.save({ validateBeforeSave: false });
+
+  const updatedProject = await populateProject(Project.findById(project._id));
+
+  // Notify the admin who assigned the task
+  const submitterName = `${req.user.firstName} ${req.user.lastName}`;
+  if (project.assignedBy?._id) {
+    await createNotification({
+      recipient: project.assignedBy._id,
+      sender: req.user._id,
+      type: "task-submitted",
+      title: "Task Submitted",
+      message: `${submitterName} submitted "${updatedProject.title}" for review.`,
+      entityType: "project",
+      entityId: updatedProject._id,
+      io: req.app.get("io"),
+    });
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, updatedProject, "Task submitted for review"));
+});
+
+// ============================================================
+// APPROVE TASK (admin/super-admin only)
+// PATCH /api/v1/projects/:projectId/approve
+// submitted -> completed
+// ============================================================
+const approveProject = asyncHandler(async (req, res) => {
+  const { projectId } = req.params;
+
+  if (!["admin", "super-admin"].includes(req.user.role)) {
+    throw new ApiError(403, "Only admins can approve tasks");
+  }
+
+  const project = await Project.findById(projectId).populate(
+    "assignedTo",
+    "firstName lastName email"
+  );
+  if (!project) throw new ApiError(404, "Project not found");
+
+  if (project.status !== "submitted") {
+    throw new ApiError(
+      409,
+      `Cannot approve a task with status "${project.status}". It must be submitted first.`
+    );
+  }
+
+  const previousStatus = project.status;
+  project.status = "completed";
+
+  recordActivity(project, {
+    action: "Approved by " + `${req.user.firstName} ${req.user.lastName}`,
+    user: req.user._id,
+    previousStatus,
+    newStatus: "completed",
+  });
+
+  await project.save();
+
+  const updatedProject = await populateProject(Project.findById(project._id));
+
+  // Notify the employee
+  if (project.assignedTo?._id) {
+    await createNotification({
+      recipient: project.assignedTo._id,
+      sender: req.user._id,
+      type: "task-approved",
+      title: "Task Approved",
+      message: `Your task "${updatedProject.title}" has been approved.`,
+      entityType: "project",
+      entityId: updatedProject._id,
+      io: req.app.get("io"),
+    });
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, updatedProject, "Task approved"));
+});
+
+// ============================================================
+// REQUEST CHANGES (admin/super-admin only)
+// PATCH /api/v1/projects/:projectId/request-changes
+// submitted -> changes-requested
+// ============================================================
+const requestProjectChanges = asyncHandler(async (req, res) => {
+  const { projectId } = req.params;
+  const { comment } = req.body;
+
+  if (!["admin", "super-admin"].includes(req.user.role)) {
+    throw new ApiError(403, "Only admins can request changes");
+  }
+
+  if (!comment?.trim() || comment.trim().length < 5) {
+    throw new ApiError(400, "Please provide meaningful feedback for the requested changes");
+  }
+
+  const project = await Project.findById(projectId).populate(
+    "assignedTo",
+    "firstName lastName email"
+  );
+  if (!project) throw new ApiError(404, "Project not found");
+
+  if (project.status !== "submitted") {
+    throw new ApiError(
+      409,
+      `Cannot request changes on a task with status "${project.status}". It must be submitted first.`
+    );
+  }
+
+  const previousStatus = project.status;
+  project.status = "changes-requested";
+  project.adminComment = comment.trim();
+
+  recordActivity(project, {
+    action: "Changes requested by " + `${req.user.firstName} ${req.user.lastName}`,
+    user: req.user._id,
+    comment: project.adminComment,
+    previousStatus,
+    newStatus: "changes-requested",
+  });
+
+  await project.save({ validateBeforeSave: false });
+
+  const updatedProject = await populateProject(Project.findById(project._id));
+
+  // Notify the employee
+  if (project.assignedTo?._id) {
+    await createNotification({
+      recipient: project.assignedTo._id,
+      sender: req.user._id,
+      type: "task-changes-requested",
+      title: "Changes Requested",
+      message: `Changes have been requested for "${updatedProject.title}".`,
+      entityType: "project",
+      entityId: updatedProject._id,
+      io: req.app.get("io"),
+    });
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, updatedProject, "Changes requested"));
+});
+
 export {
   assignProject,
   getAllProjects,
@@ -435,4 +738,8 @@ export {
   deleteProject,
   getEmployeeProjects,
   getEmployeeDashboard,
+  startProject,
+  submitProject,
+  approveProject,
+  requestProjectChanges,
 };

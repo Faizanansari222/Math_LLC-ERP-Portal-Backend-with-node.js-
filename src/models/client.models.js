@@ -238,6 +238,16 @@ const clientSchema = new mongoose.Schema(
       default: false,
     },
 
+    // Portal login account for this client, if one has been created
+    // (via invitation acceptance or an admin manually creating one).
+    // Linked by matching email — see invitation.controllers.js and
+    // client.controllers.js.
+    portalUser: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
     // Status & Assignment
     status: {
       type: String,

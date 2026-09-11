@@ -102,6 +102,14 @@ const createClient = asyncHandler(async (req, res) => {
     assignedToName = `${user.firstName} ${user.lastName}`.trim();
   }
 
+  // If a client-portal login already exists for this email (invited before
+  // the CRM profile existed), link the two records together now.
+  const existingPortalUser = await User.findOne({
+    email: email.toLowerCase().trim(),
+    role: "client",
+    client: null,
+  });
+
   const client = await Client.create({
     clientType,
 
@@ -145,10 +153,18 @@ const createClient = asyncHandler(async (req, res) => {
     businessStructure,
   });
 
-  const createdClient = await Client.findById(client._id).populate(
-    "assignedTo",
-    "firstName lastName email role department",
-  );
+  if (existingPortalUser) {
+    client.portalUser = existingPortalUser._id;
+    existingPortalUser.client = client._id;
+    await Promise.all([
+      client.save({ validateBeforeSave: false }),
+      existingPortalUser.save({ validateBeforeSave: false }),
+    ]);
+  }
+
+  const createdClient = await Client.findById(client._id)
+    .populate("assignedTo", "firstName lastName email role department")
+    .populate("portalUser", "firstName lastName email");
 
   if (!createdClient) {
     throw new ApiError(
@@ -269,6 +285,7 @@ const getAllClients = asyncHandler(async (req, res) => {
         "assignedTo",
         "firstName lastName email role department",
       )
+      .populate("portalUser", "firstName lastName email")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit),
@@ -306,10 +323,9 @@ const getAllClients = asyncHandler(async (req, res) => {
 const getClientById = asyncHandler(async (req, res) => {
   const { clientId } = req.params;
 
-  const client = await Client.findById(clientId).populate(
-    "assignedTo",
-    "firstName lastName email role department",
-  );
+  const client = await Client.findById(clientId)
+    .populate("assignedTo", "firstName lastName email role department")
+    .populate("portalUser", "firstName lastName email");
 
   if (!client) {
     throw new ApiError(404, "Client not found");
@@ -324,6 +340,32 @@ const getClientById = asyncHandler(async (req, res) => {
         "Client fetched successfully",
       ),
     );
+});
+
+// ============================================================
+// GET MY CLIENT PROFILE (logged-in client portal user)
+// GET /api/v1/clients/me
+// ============================================================
+const getMyClientProfile = asyncHandler(async (req, res) => {
+  if (!req.user.client) {
+    throw new ApiError(
+      404,
+      "No client profile is linked to this account yet. Please contact your account manager.",
+    );
+  }
+
+  const client = await Client.findById(req.user.client).populate(
+    "assignedTo",
+    "firstName lastName email department",
+  );
+
+  if (!client) {
+    throw new ApiError(404, "Client profile not found");
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, client, "Client profile fetched successfully"));
 });
 
 // ============================================================
@@ -815,6 +857,7 @@ export {
   createClient,
   getAllClients,
   getClientById,
+  getMyClientProfile,
   updateClient,
   deleteClient,
   assignClient,

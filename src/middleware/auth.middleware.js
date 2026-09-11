@@ -31,4 +31,31 @@ const authorize = (...roles) => {
     next();
   };
 };
-export { verifyJWT, authorize };
+
+// Allows access if the user's role is in `roles` OR their department is in
+// `departments`. Use for features scoped to specific departments (in
+// addition to admins/super-admins), rather than role alone.
+const authorizeRolesOrDepartments = (roles = [], departments = []) => {
+  return (req, res, next) => {
+    const roleAllowed = roles.includes(req.user.role);
+    const departmentAllowed = departments.includes(req.user.department);
+    if (!roleAllowed && !departmentAllowed) {
+      throw new ApiError(403, "Unauthorized");
+    }
+    next();
+  };
+};
+
+// Gate for the invoicing / invoice-email feature: admins, super-admins, and
+// the sales department only. Attach to invoice routes once they exist.
+const requireInvoiceAccess = authorizeRolesOrDepartments(
+  ["admin", "super-admin"],
+  ["sales"],
+);
+
+export {
+  verifyJWT,
+  authorize,
+  authorizeRolesOrDepartments,
+  requireInvoiceAccess,
+};

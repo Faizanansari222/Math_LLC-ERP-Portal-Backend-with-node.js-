@@ -457,7 +457,7 @@ const getAllTimesheets = asyncHandler(async (req, res) => {
     throw new ApiError(403, "Only admins can view all timesheets");
   }
 
-  const users = await User.find({}).select("firstName lastName email department timesheets");
+  const users = await User.find({}).select("firstName lastName email department userImage timesheets");
 
   // Flatten and combine timesheets with user info
   const allTimesheets = [];
@@ -471,6 +471,7 @@ const getAllTimesheets = asyncHandler(async (req, res) => {
           lastName: user.lastName,
           email: user.email,
           department: user.department,
+          userImage: user.userImage,
         },
         clockInTime: ts.clockInTime,
         clockOutTime: ts.clockOutTime,
