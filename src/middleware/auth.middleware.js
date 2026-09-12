@@ -5,9 +5,12 @@ import jwt from "jsonwebtoken";
 
 const verifyJWT = asyncHandler(async (req, res, next) => {
   try {
+    // .replace("Bearer", "") (the old code here) leaves a leading space
+    // before the token — jwt.verify then rejects it as malformed. Matching
+    // on "Bearer " (with the trailing space) strips it correctly.
     const token =
       req.cookies.accessToken ||
-      req.header("Authorization")?.replace("Bearer", "");
+      req.header("Authorization")?.replace("Bearer ", "");
     if (!token) throw new ApiError(401, "Unauthorizeddd");
 
     const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
