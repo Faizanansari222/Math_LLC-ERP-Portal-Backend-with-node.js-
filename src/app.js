@@ -31,11 +31,17 @@
 
   app.use(
     cors({
+      // Passing `false` (not an Error) here matters: an Error thrown from
+      // this callback has no error-handling middleware to catch it, so
+      // Express falls back to its default HTML error page for a rejected
+      // origin — a real 500, and one that happens *outside* this
+      // middleware, so it never gets a CORS header attached either. A
+      // disallowed origin should just fail the browser's own CORS check
+      // (missing Access-Control-Allow-Origin), not crash the request.
       origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin) || isLocalDevOrigin(origin)) {
-          return callback(null, true);
-        }
-        callback(new Error(`Not allowed by CORS: ${origin}`));
+        const isAllowed =
+          !origin || allowedOrigins.includes(origin) || isLocalDevOrigin(origin);
+        callback(null, isAllowed);
       },
       credentials: true,
     }),
@@ -57,5 +63,24 @@
   app.use("/api/v1/messages", messageRouter);
   app.use("/api/v1/notifications", notificationRouter);
   app.use("/api/v1/invitations", invitationRouter);
+
+  // Safety net: every route already handles its own errors via
+  // asyncHandler, so this only fires for something unexpected (a sync
+  // throw outside a controller, a rejected promise nothing awaited,
+  // etc.). Without this, such an error would fall through to Express's
+  // default HTML error page — which, like the CORS bug above, responds
+  // outside the normal middleware chain and would arrive at the browser
+  // with no CORS headers at all, so it's the pre-flighted browser
+  // request itself that would then fail even though the server sort-of
+  // succeeded. This just makes sure every response, error or not, always
+  // gets a plain JSON body with whatever CORS headers already applied.
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, next) => {
+    console.error(`[${req.method} ${req.originalUrl}] Unhandled error:`, err);
+    res.status(err.status || 500).json({
+      success: false,
+      message: err.message || "Internal Server Error",
+    });
+  });
 
   export { app };
