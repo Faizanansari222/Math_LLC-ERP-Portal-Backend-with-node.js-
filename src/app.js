@@ -55,6 +55,7 @@
   import messageRouter from "./routes/message.routes.js";
   import notificationRouter from "./routes/notification.routes.js";
   import invitationRouter from "./routes/invitation.routes.js";
+  import referenceRouter from "./routes/reference.routes.js";
 
   app.use("/api/v1/users", userRouter);
   app.use("/api/v1/clients", clientRouter);
@@ -63,6 +64,7 @@
   app.use("/api/v1/messages", messageRouter);
   app.use("/api/v1/notifications", notificationRouter);
   app.use("/api/v1/invitations", invitationRouter);
+  app.use("/api/v1/references", referenceRouter);
 
   // Safety net: every route already handles its own errors via
   // asyncHandler, so this only fires for something unexpected (a sync

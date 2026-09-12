@@ -1,5 +1,6 @@
 import { Client } from "../models/client.models.js";
 import { User } from "../models/user.models.js";
+import { Reference } from "../models/reference.models.js";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
@@ -35,6 +36,7 @@ const createClient = asyncHandler(async (req, res) => {
     accountingYear,
     notes,
     referralSource,
+    reference,
     marketingConsent,
     status,
     assignedTo,
@@ -89,6 +91,19 @@ const createClient = asyncHandler(async (req, res) => {
     );
   }
 
+  // Validate the selected reference (from the manually-managed reference
+  // list) and always trust its saved name over whatever the client sent,
+  // so the denormalized referralSource label can't drift or be spoofed.
+  let referenceDoc = null;
+
+  if (reference) {
+    referenceDoc = await Reference.findById(reference);
+
+    if (!referenceDoc) {
+      throw new ApiError(404, "Selected reference not found");
+    }
+  }
+
   // Validate assigned user
   let assignedToName;
 
@@ -140,7 +155,8 @@ const createClient = asyncHandler(async (req, res) => {
     accountingYear,
 
     notes,
-    referralSource,
+    referralSource: referenceDoc ? referenceDoc.name : referralSource,
+    reference: referenceDoc ? referenceDoc._id : null,
     marketingConsent,
 
     status,
@@ -164,7 +180,8 @@ const createClient = asyncHandler(async (req, res) => {
 
   const createdClient = await Client.findById(client._id)
     .populate("assignedTo", "firstName lastName email role department")
-    .populate("portalUser", "firstName lastName email");
+    .populate("portalUser", "firstName lastName email")
+    .populate("reference", "name status");
 
   if (!createdClient) {
     throw new ApiError(
@@ -286,6 +303,7 @@ const getAllClients = asyncHandler(async (req, res) => {
         "firstName lastName email role department",
       )
       .populate("portalUser", "firstName lastName email")
+      .populate("reference", "name status")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit),
@@ -325,7 +343,8 @@ const getClientById = asyncHandler(async (req, res) => {
 
   const client = await Client.findById(clientId)
     .populate("assignedTo", "firstName lastName email role department")
-    .populate("portalUser", "firstName lastName email");
+    .populate("portalUser", "firstName lastName email")
+    .populate("reference", "name status");
 
   if (!client) {
     throw new ApiError(404, "Client not found");
@@ -403,6 +422,24 @@ const updateClient = asyncHandler(async (req, res) => {
     req.body.email = email;
   }
 
+  // Validate the selected reference and re-derive the denormalized
+  // referralSource label from it, same as on create. Sending an empty
+  // value clears the link (e.g. switching to a custom "Other" referrer).
+  if (Object.prototype.hasOwnProperty.call(req.body, "reference")) {
+    if (req.body.reference) {
+      const referenceDoc = await Reference.findById(req.body.reference);
+
+      if (!referenceDoc) {
+        throw new ApiError(404, "Selected reference not found");
+      }
+
+      req.body.reference = referenceDoc._id;
+      req.body.referralSource = referenceDoc.name;
+    } else {
+      req.body.reference = null;
+    }
+  }
+
   // Validate assigned user
   if (req.body.assignedTo) {
     const user = await User.findById(req.body.assignedTo);
@@ -424,10 +461,9 @@ const updateClient = asyncHandler(async (req, res) => {
       new: true,
       runValidators: true,
     },
-  ).populate(
-    "assignedTo",
-    "firstName lastName email role department",
-  );
+  )
+    .populate("assignedTo", "firstName lastName email role department")
+    .populate("reference", "name status");
 
   if (!updatedClient) {
     throw new ApiError(404, "Client not found");

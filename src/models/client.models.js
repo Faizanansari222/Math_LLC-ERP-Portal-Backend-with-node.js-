@@ -228,10 +228,18 @@ const clientSchema = new mongoose.Schema(
       trim: true,
       maxlength: [1000, "Notes cannot exceed 1000 characters"],
     },
+    // Denormalized referral label, kept in sync with `reference.name` when
+    // a reference from the manual list is selected. Also holds free-text
+    // when the client picks "Other" instead of a saved reference.
     referralSource: {
       type: String,
       trim: true,
       maxlength: [100, "Referral source cannot exceed 100 characters"],
+    },
+    reference: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Reference",
+      default: null,
     },
     marketingConsent: {
       type: Boolean,
