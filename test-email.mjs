@@ -12,12 +12,6 @@ if (!testRecipient) {
   process.exit(1);
 }
 
-console.log("--- Env check (no secrets printed) ---");
-console.log("RESEND_API_KEY present:", !!process.env.RESEND_API_KEY, "length:", (process.env.RESEND_API_KEY || "").length);
-console.log("EMAIL_FROM:", process.env.EMAIL_FROM);
-console.log("Sending test email to:", testRecipient);
-console.log("---------------------------------------");
-
 try {
   const result = await sendEmail({
     to: testRecipient,

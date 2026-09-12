@@ -97,7 +97,6 @@ const loginUser = asyncHandler(async (req, res) => {
   if ([email, password].some((field) => field?.trim() === "")) {
     throw new ApiError(400, "All fields are required");
   }
-  console.log(email,password)
 
   const user = await User.findOne({ email }).select("+password");
   if (!user) throw new ApiError(404, "User not found");
@@ -246,7 +245,7 @@ const forgotPassword = asyncHandler(async (req, res) => {
   user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
   await user.save({ validateBeforeSave: false });
 
-  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5174";
   const resetUrl = `${frontendUrl}/reset-password/${rawToken}`;
 
   try {

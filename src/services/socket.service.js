@@ -56,7 +56,6 @@ const initSocketIO = (httpServer, app) => {
   // ========== CONNECTION HANDLER ==========
   io.on("connection", (socket) => {
     const userId = socket.user._id.toString();
-    console.log(`🔌 User connected: ${socket.user.firstName} ${socket.user.lastName} (${socket.id})`);
 
     // Track connected user
     if (!connectedUsers.has(userId)) {
@@ -81,7 +80,6 @@ const initSocketIO = (httpServer, app) => {
       // Create a unique room name for the conversation
       const roomName = getConversationRoom(userId, otherUserId);
       socket.join(roomName);
-      console.log(`📁 ${socket.user.firstName} joined conversation room: ${roomName}`);
 
       socket.emit("joined-conversation", { otherUserId, room: roomName });
     });
@@ -90,17 +88,9 @@ const initSocketIO = (httpServer, app) => {
     socket.on("leave-conversation", (otherUserId) => {
       const roomName = getConversationRoom(userId, otherUserId);
       socket.leave(roomName);
-      console.log(`📁 ${socket.user.firstName} left conversation room: ${roomName}`);
     });
 
-    // Note: sending a message goes through POST /api/v1/messages (REST) so
-    // it's reliable even if this socket connection is briefly down — that
-    // endpoint already emits "new-message" / "message-received" /
-    // "notification" to this same room and to `user:${receiverId}` once the
-    // message is saved. There's no socket.on("send-message") here anymore
-    // to avoid two code paths that can create a message.
-
-    // Mark messages as read
+   
     socket.on("mark-read", async (data) => {
       try {
         const { senderId } = data;
