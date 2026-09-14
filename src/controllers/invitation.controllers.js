@@ -229,6 +229,10 @@ const createAndSendInvitation = async ({
   const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5174";
   const invitationUrl = `${frontendUrl}/accept-invitation/${rawToken}`;
 
+  // Best-effort send: a broken mail provider shouldn't stop the invitation
+  // record from being created, but the caller needs to know it happened so
+  // the UI isn't left claiming an email went out when it didn't.
+  let emailError = null;
   try {
     await sendInvitationEmailForRole({
       role,
@@ -238,15 +242,17 @@ const createAndSendInvitation = async ({
       invitedByName,
       department,
     });
-  } catch (emailError) {
-    // Log the error but don't fail the invitation creation
-    console.error("Failed to send invitation email:", emailError.message);
+  } catch (err) {
+    console.error("Failed to send invitation email:", err.message);
+    emailError = err.message;
   }
 
-  return Invitation.findById(invitation._id).populate(
+  const populatedInvitation = await Invitation.findById(invitation._id).populate(
     "invitedBy",
     "firstName lastName email",
   );
+
+  return { invitation: populatedInvitation, emailError };
 };
 
 const toSafeInvitation = (invitation) => ({
@@ -283,7 +289,7 @@ const inviteClient = asyncHandler(async (req, res) => {
     throw new ApiError(409, "A user with this email already exists");
   }
 
-  const safeInvitation = await createAndSendInvitation({
+  const { invitation, emailError } = await createAndSendInvitation({
     email: normalizedEmail,
     name: clientName,
     role: "client",
@@ -296,8 +302,10 @@ const inviteClient = asyncHandler(async (req, res) => {
     .json(
       new ApiResponse(
         201,
-        toSafeInvitation(safeInvitation),
-        "Invitation sent successfully",
+        { ...toSafeInvitation(invitation), emailSent: !emailError, emailError: emailError || undefined },
+        emailError
+          ? "Invitation created, but the invite email failed to send"
+          : "Invitation sent successfully",
       ),
     );
 });
@@ -348,7 +356,7 @@ const inviteStaff = asyncHandler(async (req, res) => {
     throw new ApiError(409, "A user with this email already exists");
   }
 
-  const safeInvitation = await createAndSendInvitation({
+  const { invitation, emailError } = await createAndSendInvitation({
     email: normalizedEmail,
     name,
     role,
@@ -363,8 +371,10 @@ const inviteStaff = asyncHandler(async (req, res) => {
     .json(
       new ApiResponse(
         201,
-        toSafeInvitation(safeInvitation),
-        "Invitation sent successfully",
+        { ...toSafeInvitation(invitation), emailSent: !emailError, emailError: emailError || undefined },
+        emailError
+          ? "Invitation created, but the invite email failed to send"
+          : "Invitation sent successfully",
       ),
     );
 });
@@ -809,6 +819,7 @@ const resendInvitation = asyncHandler(async (req, res) => {
 
   const invitedByName = `${req.user.firstName} ${req.user.lastName}`;
 
+  let emailError = null;
   try {
     await sendInvitationEmailForRole({
       role: invitation.role,
@@ -818,16 +829,19 @@ const resendInvitation = asyncHandler(async (req, res) => {
       invitedByName,
       department: invitation.department,
     });
-  } catch (emailError) {
-    console.error("Failed to resend invitation email:", emailError.message);
+  } catch (err) {
+    console.error("Failed to resend invitation email:", err.message);
+    emailError = err.message;
   }
 
   // Return safe data
   return res.status(200).json(
     new ApiResponse(
       200,
-      toSafeInvitation(newInvitation),
-      "Invitation resent successfully",
+      { ...toSafeInvitation(newInvitation), emailSent: !emailError, emailError: emailError || undefined },
+      emailError
+        ? "Invitation renewed, but the invite email failed to send"
+        : "Invitation resent successfully",
     ),
   );
 });
