@@ -62,21 +62,25 @@ const clientSchema = new mongoose.Schema(
       ],
       index: true,
     },
+    // Stored in E.164 format (e.g. "+14155552671"), as produced by the
+    // international phone input on the frontend — clients are worldwide,
+    // not US-only, so this intentionally isn't scoped to a single
+    // country's local format.
     phone: {
       type: String,
       required: [true, "Phone number is required"],
       trim: true,
       match: [
-        /^\(\d{3}\)\s\d{3}-\d{4}$/,
-        "Please provide a valid phone number in format (XXX) XXX-XXXX",
+        /^\+[1-9]\d{1,14}$/,
+        "Please provide a valid phone number, including country code",
       ],
     },
     alternativePhone: {
       type: String,
       trim: true,
       match: [
-        /^\(\d{3}\)\s\d{3}-\d{4}$/,
-        "Please provide a valid phone number in format (XXX) XXX-XXXX",
+        /^\+[1-9]\d{1,14}$/,
+        "Please provide a valid phone number, including country code",
       ],
     },
 

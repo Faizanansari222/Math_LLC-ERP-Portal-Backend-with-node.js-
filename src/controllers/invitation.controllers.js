@@ -11,7 +11,10 @@ import {
 } from "../services/mail.service.js";
 
 const EMAIL_REGEX = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
-const PHONE_REGEX = /^\(\d{3}\)\s\d{3}-\d{4}$/;
+// E.164 format (e.g. "+14155552671") — matches client.models.js /
+// user.models.js, since both clients and staff can be based anywhere.
+const PHONE_REGEX = /^\+[1-9]\d{1,14}$/;
+const PHONE_ERROR_MESSAGE = "Please provide a valid phone number, including country code";
 const CLIENT_TYPES = ["individual", "business", "non-profit", "trust", "estate"];
 const CLIENT_SERVICES = [
   "tax-filing",
@@ -77,7 +80,7 @@ const validateClientProfileFields = (fields) => {
   }
 
   if (!phone || !PHONE_REGEX.test(phone.trim())) {
-    throw new ApiError(400, "Please provide a valid phone number in format (XXX) XXX-XXXX");
+    throw new ApiError(400, PHONE_ERROR_MESSAGE);
   }
 
   if (!address?.trim()) throw new ApiError(400, "Street address is required");
@@ -594,8 +597,13 @@ const acceptInvitation = asyncHandler(async (req, res) => {
   // form, so their phone (and the rest of the profile) is validated
   // against the Client model's rules below.
   const isStaffInvite = invitation.role !== "client";
-  if (isStaffInvite && (!phone || phone.trim() === "")) {
-    throw new ApiError(400, "Phone number is required");
+  if (isStaffInvite) {
+    if (!phone || phone.trim() === "") {
+      throw new ApiError(400, "Phone number is required");
+    }
+    if (!PHONE_REGEX.test(phone.trim())) {
+      throw new ApiError(400, PHONE_ERROR_MESSAGE);
+    }
   }
 
   // Parse name into firstName/lastName up front — needed for the client

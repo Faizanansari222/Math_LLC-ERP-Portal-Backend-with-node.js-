@@ -58,9 +58,16 @@ const userSchema = mongoose.Schema(
     userImage: {
       type: String,
     },
+    // E.164 format (e.g. "+14155552671") — staff can be based anywhere,
+    // not just the US. See client.models.js for the same format.
     phone: {
       type: String,
       required: true,
+      trim: true,
+      match: [
+        /^\+[1-9]\d{1,14}$/,
+        "Please provide a valid phone number, including country code",
+      ],
     },
     department: {
       type: String,
