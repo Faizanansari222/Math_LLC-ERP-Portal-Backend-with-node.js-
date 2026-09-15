@@ -160,11 +160,32 @@ projectSchema.index({ assignedTo: 1, status: 1 });
 // Used by the deadline-reminder job to efficiently find tasks due soon
 projectSchema.index({ deadline: 1, status: 1 });
 
-// Auto-set completedAt when status changes to completed
+// The progress bar is derived from status rather than hand-entered — this is
+// the single source of truth for that mapping, shared by the model's
+// pre-save hook (covers the start/submit/approve/request-changes workflow
+// endpoints, which all mutate the document and call `.save()`) and by
+// project.controllers.js's generic `updateProject` (which goes through
+// `findByIdAndUpdate` and so never triggers this hook, but replicates the
+// same lookup for anyone sending a `status` change through that endpoint,
+// e.g. the admin edit form). "on-hold" and "cancelled" are intentionally
+// left unmapped: pausing or cancelling a task shouldn't erase how much of
+// it was actually done.
+export const STATUS_PROGRESS = {
+  pending: 0,
+  "in-progress": 40,
+  submitted: 80,
+  "changes-requested": 60,
+  completed: 100,
+};
+
 projectSchema.pre("save", function (next) {
-  if (this.isModified("status") && this.status === "completed" && !this.completedAt) {
-    this.completedAt = new Date();
-    this.progress = 100;
+  if (this.isModified("status")) {
+    if (this.status === "completed" && !this.completedAt) {
+      this.completedAt = new Date();
+    }
+    if (Object.prototype.hasOwnProperty.call(STATUS_PROGRESS, this.status)) {
+      this.progress = STATUS_PROGRESS[this.status];
+    }
   }
   // If the deadline is pushed out, allow a fresh reminder to fire for it
   if (this.isModified("deadline") && !this.isNew) {

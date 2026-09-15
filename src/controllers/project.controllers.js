@@ -1,4 +1,4 @@
-import { Project } from "../models/project.models.js";
+import { Project, STATUS_PROGRESS } from "../models/project.models.js";
 import { Client } from "../models/client.models.js";
 import { User } from "../models/user.models.js";
 import { Task } from "../models/task.models.js";
@@ -189,22 +189,31 @@ const getProjectById = asyncHandler(async (req, res) => {
 
   if (!project) throw new ApiError(404, "Project not found");
 
-  // Employees can only see their own projects
-  if (req.user.role === "user" && project.assignedTo._id.toString() !== req.user._id.toString()) {
+  // Employees can only see their own projects. The assigned employee's
+  // account may since have been deleted, in which case `assignedTo`
+  // populates to null — treat that the same as "not this user".
+  if (
+    req.user.role === "user" &&
+    project.assignedTo?._id.toString() !== req.user._id.toString()
+  ) {
     throw new ApiError(403, "You can only view your own projects");
   }
 
   // Clients can only see projects for their own linked CRM record
   if (req.user.role === "client") {
-    if (!req.user.client || project.client._id.toString() !== req.user.client.toString()) {
+    if (
+      !req.user.client ||
+      project.client?._id.toString() !== req.user.client.toString()
+    ) {
       throw new ApiError(403, "You can only view your own projects");
     }
   }
 
   // Get related tasks for this project (internal staff task list — not
-  // client-facing data, so skip it for the client role)
+  // client-facing data, so skip it for the client role, and skip it if
+  // the assigned employee's account no longer exists)
   const tasks =
-    req.user.role === "client"
+    req.user.role === "client" || !project.assignedTo
       ? []
       : await Task.find({ assignedTo: project.assignedTo._id })
           .sort({ createdAt: -1 })
@@ -261,6 +270,21 @@ const updateProject = asyncHandler(async (req, res) => {
   delete req.body.createdAt;
   delete req.body.updatedAt;
   delete req.body.assignedBy;
+
+  // Keep the progress bar automatic here too: `findByIdAndUpdate` below
+  // doesn't run the model's pre-save hook, so a status change coming
+  // through this generic endpoint (the admin edit form) needs the same
+  // status -> progress mapping applied explicitly. Any `progress` value
+  // sent alongside a status change is superseded — the two shouldn't
+  // drift apart — but progress can still be adjusted on its own when
+  // status isn't part of the same update.
+  if (
+    req.body.status &&
+    req.body.status !== existingProject.status &&
+    Object.prototype.hasOwnProperty.call(STATUS_PROGRESS, req.body.status)
+  ) {
+    req.body.progress = STATUS_PROGRESS[req.body.status];
+  }
 
   const updatedProject = await Project.findByIdAndUpdate(
     projectId,
